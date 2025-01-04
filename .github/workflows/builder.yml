@@ -12,17 +12,12 @@ jobs:
   prepare:
     runs-on: ubuntu-latest
     steps:
-      - name: Install build dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential autoconf automake libtool
-
       - name: Clone OTP repository
         run: |
           git clone https://github.com/erlang/otp.git
           cd otp
           # Clone all branches we need
-          git fetch origin maint-27:maint-27 # maint-26:maint-26 maint-25:maint-25
+          git fetch origin maint-27:maint-27# maint-26:maint-26 maint-25:maint-25
 
       - name: Cache OTP repository
         uses: actions/cache/save@v4
@@ -37,7 +32,7 @@ jobs:
     strategy:
       matrix:
         branch: ['maint-27']#, 'maint-26', 'maint-25']
-        java-version: ['17']#, '19', '21']
+        java-version: ['21']#, '19', '21']
         include:
           - branch: maint-27
             branch_suffix: otp27
@@ -49,6 +44,11 @@ jobs:
     steps:
       - name: Checkout current repository
         uses: actions/checkout@v4
+        
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential autoconf automake libtool
         
       - name: Set up JDK
         uses: actions/setup-java@v4
