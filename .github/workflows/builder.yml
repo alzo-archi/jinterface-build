@@ -6,7 +6,30 @@ on:
     - cron: '0 0 * * 0'  # Runs weekly on Sunday at midnight UTC
 
 jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential autoconf automake libtool
+
+      - name: Clone OTP repository
+        run: |
+          git clone https://github.com/erlang/otp.git
+          cd otp
+          # Clone all branches we need
+          git fetch origin maint-27:maint-27 maint-26:maint-26 maint-25:maint-25
+
+      - name: Cache OTP repository
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            otp
+          key: otp-repo-${{ github.run_id }}
+
   build-and-release:
+    needs: prepare
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -29,20 +52,19 @@ jobs:
         with:
           java-version: ${{ matrix.java-version }}
           distribution: 'temurin'
-          
-      - name: Clone OTP repository
-        run: |
-          git clone https://github.com/erlang/otp.git
-          cd otp
-          git checkout ${{ matrix.branch }}
-          
-      - name: Install build dependencies
-        run: |
-          sudo apt-get install -y build-essential autoconf automake libtool
+
+      - name: Restore cached OTP repository
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            otp
+          key: otp-repo-${{ github.run_id }}
+          fail-on-cache-miss: true
           
       - name: Build project
         run: |
           cd otp
+          git checkout ${{ matrix.branch }}
           chmod +x ./configure
           ./configure JAVA_HOME=$JAVA_HOME
           make
@@ -73,7 +95,7 @@ jobs:
           tag_name: v${{ steps.locate_jar.outputs.version }}-${{ matrix.branch_suffix }}-java${{ matrix.java-version }}
           release_name: OtpErlang v${{ steps.locate_jar.outputs.version }} (${{ matrix.branch }} - Java ${{ matrix.java-version }})
           draft: false
-          prerelease: ${{ matrix.branch != 'maint-27' }}  # Only maint-27 builds are not pre-releases
+          prerelease: ${{ matrix.branch != 'maint-27' }}
           body: |
             OtpErlang.jar version ${{ steps.locate_jar.outputs.version }}
             Build with:
@@ -90,8 +112,7 @@ jobs:
           asset_name: OtpErlang-${{ matrix.branch_suffix }}-java${{ matrix.java-version }}-${{ steps.locate_jar.outputs.version }}.jar
           asset_content_type: application/java-archive
           
-      - name: Clean up
+      - name: Clean up artifacts
         if: always()
         run: |
-          rm -rf otp
           rm -f ./OtpErlang-${{ matrix.branch_suffix }}-java${{ matrix.java-version }}-${{ steps.locate_jar.outputs.version }}.jar
