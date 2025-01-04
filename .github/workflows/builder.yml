@@ -10,8 +10,8 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        branch: ['maint-27', 'maint-26', 'maint-25']
-        java-version: ['17', '19', '21']
+        branch: ['maint-27'] #, 'maint-26', 'maint-25']
+        java-version: ['21'] #, '19', '21']
         include:
           - branch: maint-27
             branch_suffix: otp27
