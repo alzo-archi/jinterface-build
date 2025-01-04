@@ -14,3 +14,9 @@ mvn install:install-file \
     -Dpackaging=jar \
     -DgeneratePom=true
 ```
+
+|OTP Version|Jinterface Version|URL|
+|---|---|---|
+|27|1.14.1|https://github.com/alzo-archi/jinterface-build/releases/download/v1.14.1-otp27-java21/OtpErlang-otp27-java21-1.14.1.jar|
+|26|1.14|https://github.com/alzo-archi/jinterface-build/releases/download/v1.14-otp26-java21/OtpErlang-otp26-java21-1.14.jar|
+|25|1.13.2|https://github.com/alzo-archi/jinterface-build/releases/download/v1.13.2-otp25-java21/OtpErlang-otp25-java21-1.13.2.jar|
