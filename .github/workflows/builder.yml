@@ -82,8 +82,8 @@ jobs:
           echo "Found version: $VERSION"
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           
-          sudo cp "$JINTERFACE_PATH/OtpErlang.jar" "./OtpErlang-$VERSION.jar"
-          sudo chown runner:runner "./OtpErlang-$VERSION.jar"
+          sudo cp "$JINTERFACE_PATH/OtpErlang.jar" "./OtpErlang-${{ matrix.branch_suffix }}-java${{ matrix.java-version }}-$VERSION.jar"
+          sudo chown runner:runner "./OtpErlang-${{ matrix.branch_suffix }}-java${{ matrix.java-version }}-$VERSION.jar"
           
       - name: Create and upload release
         env:
@@ -96,7 +96,7 @@ jobs:
           
           gh release create \
             "v${{ steps.locate_jar.outputs.version }}-${{ matrix.branch_suffix }}-java${{ matrix.java-version }}" \
-            "./OtpErlang-${{ steps.locate_jar.outputs.version }}.jar" \
+            "./OtpErlang-${{ matrix.branch_suffix }}-java${{ matrix.java-version }}-${{ steps.locate_jar.outputs.version }}.jar" \
             --title "OtpErlang v${{ steps.locate_jar.outputs.version }} (${{ matrix.branch }} - Java ${{ matrix.java-version }})" \
             --notes-file release_notes.md \
             --prerelease=${{ matrix.branch != 'maint-27' }}
