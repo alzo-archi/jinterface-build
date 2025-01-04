@@ -1,0 +1,97 @@
+name: Build OTP JInterface with Multiple JDKs
+
+on:
+  workflow_dispatch:  # Allows manual triggering
+  schedule:
+    - cron: '0 0 * * 0'  # Runs weekly on Sunday at midnight UTC
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        branch: ['maint-27', 'maint-26', 'maint-25']
+        java-version: ['17', '19', '21']
+        include:
+          - branch: maint-27
+            branch_suffix: otp27
+          - branch: maint-26
+            branch_suffix: otp26
+          - branch: maint-25
+            branch_suffix: otp25
+    
+    steps:
+      - name: Checkout current repository
+        uses: actions/checkout@v4
+        
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ matrix.java-version }}
+          distribution: 'temurin'
+          
+      - name: Clone OTP repository
+        run: |
+          git clone https://github.com/erlang/otp.git
+          cd otp
+          git checkout ${{ matrix.branch }}
+          
+      - name: Install build dependencies
+        run: |
+          sudo apt-get install -y build-essential autoconf automake libtool
+          
+      - name: Build project
+        run: |
+          cd otp
+          chmod +x ./configure
+          ./configure JAVA_HOME=$JAVA_HOME
+          make
+          sudo make install
+          
+      - name: Locate and copy JAR file
+        id: locate_jar
+        run: |
+          # Get the jinterface path using Erlang
+          JINTERFACE_PATH=$(erl -noshell -eval 'io:format("~s", [code:priv_dir(jinterface)])' -s init stop)
+          echo "Jinterface path: $JINTERFACE_PATH"
+          
+          # Extract version from the path
+          VERSION=$(echo $JINTERFACE_PATH | grep -oP 'jinterface-\K[0-9.]+')
+          echo "Found version: $VERSION"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          
+          # Copy the jar file
+          sudo cp "$JINTERFACE_PATH/OtpErlang.jar" "./OtpErlang-${{ matrix.branch_suffix }}-java${{ matrix.java-version }}-$VERSION.jar"
+          sudo chown runner:runner "./OtpErlang-${{ matrix.branch_suffix }}-java${{ matrix.java-version }}-$VERSION.jar"
+          
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: v${{ steps.locate_jar.outputs.version }}-${{ matrix.branch_suffix }}-java${{ matrix.java-version }}
+          release_name: OtpErlang v${{ steps.locate_jar.outputs.version }} (${{ matrix.branch }} - Java ${{ matrix.java-version }})
+          draft: false
+          prerelease: ${{ matrix.branch != 'maint-27' }}  # Only maint-27 builds are not pre-releases
+          body: |
+            OtpErlang.jar version ${{ steps.locate_jar.outputs.version }}
+            Build with:
+            - OTP Branch: ${{ matrix.branch }}
+            - Java Version: ${{ matrix.java-version }}
+            
+      - name: Upload Release Asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./OtpErlang-${{ matrix.branch_suffix }}-java${{ matrix.java-version }}-${{ steps.locate_jar.outputs.version }}.jar
+          asset_name: OtpErlang-${{ matrix.branch_suffix }}-java${{ matrix.java-version }}-${{ steps.locate_jar.outputs.version }}.jar
+          asset_content_type: application/java-archive
+          
+      - name: Clean up
+        if: always()
+        run: |
+          rm -rf otp
+          rm -f ./OtpErlang-${{ matrix.branch_suffix }}-java${{ matrix.java-version }}-${{ steps.locate_jar.outputs.version }}.jar
