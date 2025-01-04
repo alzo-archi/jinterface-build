@@ -82,8 +82,8 @@ jobs:
           echo "Found version: $VERSION"
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           
-          sudo cp "$JINTERFACE_PATH/OtpErlang.jar" "./OtpErlang-${{ matrix.branch_suffix }}-java${{ matrix.java-version }}-$VERSION.jar"
-          sudo chown runner:runner "./OtpErlang-${{ matrix.branch_suffix }}-java${{ matrix.java-version }}-$VERSION.jar"
+          sudo cp "$JINTERFACE_PATH/OtpErlang.jar" "./OtpErlang-$VERSION.jar"
+          sudo chown runner:runner "./OtpErlang-$VERSION.jar"
           
       - name: Create and upload release
         env:
