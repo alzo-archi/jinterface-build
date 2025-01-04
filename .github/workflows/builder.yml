@@ -15,10 +15,10 @@ jobs:
         include:
           - branch: maint-27
             branch_suffix: otp27
-          - branch: maint-26
-            branch_suffix: otp26
-          - branch: maint-25
-            branch_suffix: otp25
+          #- branch: maint-26
+          #  branch_suffix: otp26
+          #- branch: maint-25
+          #  branch_suffix: otp25
     
     steps:
       - name: Checkout current repository
