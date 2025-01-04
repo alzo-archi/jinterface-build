@@ -31,15 +31,15 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        branch: ['maint-27']#, 'maint-26', 'maint-25']
+        branch: ['maint-27', 'maint-26', 'maint-25']
         java-version: ['21']#, '19', '21']
         include:
           - branch: maint-27
             branch_suffix: otp27
-          #- branch: maint-26
-          #  branch_suffix: otp26
-          #- branch: maint-25
-          #  branch_suffix: otp25
+          - branch: maint-26
+            branch_suffix: otp26
+          - branch: maint-25
+            branch_suffix: otp25
     
     steps:
       - name: Checkout current repository
@@ -102,7 +102,7 @@ jobs:
           # Create release and upload asset using gh CLI
           gh release create \
             "v${{ steps.locate_jar.outputs.version }}-${{ matrix.branch_suffix }}-java${{ matrix.java-version }}" \
-            "./OtpErlang-${{ matrix.branch_suffix }}-java${{ matrix.java-version }}-${{ steps.locate_jar.outputs.version }}.jar" \
+            "./OtpErlang-${{ steps.locate_jar.outputs.version }}.jar" \
             --title "OtpErlang v${{ steps.locate_jar.outputs.version }} (${{ matrix.branch }} - Java ${{ matrix.java-version }})" \
             --notes-file release_notes.md \
             --prerelease=${{ matrix.branch != 'maint-27' }}
