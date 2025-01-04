@@ -1,12 +1,12 @@
 name: Build OTP JInterface with Multiple JDKs
 
 on:
-  workflow_dispatch:  # Allows manual triggering
+  workflow_dispatch: 
   schedule:
-    - cron: '0 0 * * 0'  # Runs weekly on Sunday at midnight UTC
+    - cron: '0 0 1 * *'
 
 permissions:
-  contents: write  # Required for creating releases
+  contents: write
   
 jobs:
   prepare:
@@ -16,8 +16,7 @@ jobs:
         run: |
           git clone https://github.com/erlang/otp.git
           cd otp
-          # Clone all branches we need
-          git fetch origin maint-27:maint-27# maint-26:maint-26 maint-25:maint-25
+          git fetch origin maint-27:maint-27 maint-26:maint-26 maint-25:maint-25
 
       - name: Cache OTP repository
         uses: actions/cache/save@v4
@@ -32,7 +31,7 @@ jobs:
     strategy:
       matrix:
         branch: ['maint-27', 'maint-26', 'maint-25']
-        java-version: ['21']#, '19', '21']
+        java-version: ['21']
         include:
           - branch: maint-27
             branch_suffix: otp27
@@ -76,16 +75,13 @@ jobs:
       - name: Locate and copy JAR file
         id: locate_jar
         run: |
-          # Get the jinterface path using Erlang (now available from OTP build)
           JINTERFACE_PATH=$(erl -noshell -eval 'io:format("~s", [code:priv_dir(jinterface)])' -s init stop)
           echo "Jinterface path: $JINTERFACE_PATH"
           
-          # Extract version from the path
           VERSION=$(echo $JINTERFACE_PATH | grep -oP 'jinterface-\K[0-9.]+')
           echo "Found version: $VERSION"
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           
-          # Copy the jar file
           sudo cp "$JINTERFACE_PATH/OtpErlang.jar" "./OtpErlang-${{ matrix.branch_suffix }}-java${{ matrix.java-version }}-$VERSION.jar"
           sudo chown runner:runner "./OtpErlang-${{ matrix.branch_suffix }}-java${{ matrix.java-version }}-$VERSION.jar"
           
@@ -93,13 +89,11 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Create release notes
           echo "OtpErlang.jar version ${{ steps.locate_jar.outputs.version }}" > release_notes.md
           echo "Build with:" >> release_notes.md
           echo "- OTP Branch: ${{ matrix.branch }}" >> release_notes.md
           echo "- Java Version: ${{ matrix.java-version }}" >> release_notes.md
           
-          # Create release and upload asset using gh CLI
           gh release create \
             "v${{ steps.locate_jar.outputs.version }}-${{ matrix.branch_suffix }}-java${{ matrix.java-version }}" \
             "./OtpErlang-${{ steps.locate_jar.outputs.version }}.jar" \
