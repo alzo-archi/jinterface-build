@@ -5,6 +5,9 @@ on:
   schedule:
     - cron: '0 0 * * 0'  # Runs weekly on Sunday at midnight UTC
 
+permissions:
+  contents: write  # Required for creating releases
+  
 jobs:
   prepare:
     runs-on: ubuntu-latest
@@ -19,7 +22,7 @@ jobs:
           git clone https://github.com/erlang/otp.git
           cd otp
           # Clone all branches we need
-          git fetch origin maint-27:maint-27 maint-26:maint-26 maint-25:maint-25
+          git fetch origin maint-27:maint-27 # maint-26:maint-26 maint-25:maint-25
 
       - name: Cache OTP repository
         uses: actions/cache/save@v4
@@ -33,8 +36,8 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        branch: ['maint-27'] #, 'maint-26', 'maint-25']
-        java-version: ['21'] #, '19', '21']
+        branch: ['maint-27']#, 'maint-26', 'maint-25']
+        java-version: ['17']#, '19', '21']
         include:
           - branch: maint-27
             branch_suffix: otp27
@@ -73,7 +76,7 @@ jobs:
       - name: Locate and copy JAR file
         id: locate_jar
         run: |
-          # Get the jinterface path using Erlang
+          # Get the jinterface path using Erlang (now available from OTP build)
           JINTERFACE_PATH=$(erl -noshell -eval 'io:format("~s", [code:priv_dir(jinterface)])' -s init stop)
           echo "Jinterface path: $JINTERFACE_PATH"
           
@@ -86,33 +89,26 @@ jobs:
           sudo cp "$JINTERFACE_PATH/OtpErlang.jar" "./OtpErlang-${{ matrix.branch_suffix }}-java${{ matrix.java-version }}-$VERSION.jar"
           sudo chown runner:runner "./OtpErlang-${{ matrix.branch_suffix }}-java${{ matrix.java-version }}-$VERSION.jar"
           
-      - name: Create Release
-        id: create_release
-        uses: actions/create-release@v1
+      - name: Create and upload release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: v${{ steps.locate_jar.outputs.version }}-${{ matrix.branch_suffix }}-java${{ matrix.java-version }}
-          release_name: OtpErlang v${{ steps.locate_jar.outputs.version }} (${{ matrix.branch }} - Java ${{ matrix.java-version }})
-          draft: false
-          prerelease: ${{ matrix.branch != 'maint-27' }}
-          body: |
-            OtpErlang.jar version ${{ steps.locate_jar.outputs.version }}
-            Build with:
-            - OTP Branch: ${{ matrix.branch }}
-            - Java Version: ${{ matrix.java-version }}
-            
-      - name: Upload Release Asset
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./OtpErlang-${{ matrix.branch_suffix }}-java${{ matrix.java-version }}-${{ steps.locate_jar.outputs.version }}.jar
-          asset_name: OtpErlang-${{ matrix.branch_suffix }}-java${{ matrix.java-version }}-${{ steps.locate_jar.outputs.version }}.jar
-          asset_content_type: application/java-archive
+        run: |
+          # Create release notes
+          echo "OtpErlang.jar version ${{ steps.locate_jar.outputs.version }}" > release_notes.md
+          echo "Build with:" >> release_notes.md
+          echo "- OTP Branch: ${{ matrix.branch }}" >> release_notes.md
+          echo "- Java Version: ${{ matrix.java-version }}" >> release_notes.md
+          
+          # Create release and upload asset using gh CLI
+          gh release create \
+            "v${{ steps.locate_jar.outputs.version }}-${{ matrix.branch_suffix }}-java${{ matrix.java-version }}" \
+            "./OtpErlang-${{ matrix.branch_suffix }}-java${{ matrix.java-version }}-${{ steps.locate_jar.outputs.version }}.jar" \
+            --title "OtpErlang v${{ steps.locate_jar.outputs.version }} (${{ matrix.branch }} - Java ${{ matrix.java-version }})" \
+            --notes-file release_notes.md \
+            --prerelease=${{ matrix.branch != 'maint-27' }}
           
       - name: Clean up artifacts
         if: always()
         run: |
           rm -f ./OtpErlang-${{ matrix.branch_suffix }}-java${{ matrix.java-version }}-${{ steps.locate_jar.outputs.version }}.jar
+          rm -f release_notes.md
