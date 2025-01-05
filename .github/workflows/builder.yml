@@ -28,6 +28,8 @@ jobs:
   build-and-release:
     needs: prepare
     runs-on: ubuntu-latest
+    outputs:
+      matrix-info: ${{ steps.set-matrix-info.outputs.matrix-info }}
     strategy:
       matrix:
         branch: ['maint-27', 'maint-26', 'maint-25']
@@ -82,8 +84,14 @@ jobs:
           echo "Found version: $VERSION"
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           
-          sudo cp "$JINTERFACE_PATH/OtpErlang.jar" "./OtpErlang-${{ matrix.branch_suffix }}-java${{ matrix.java-version }}-$VERSION.jar"
-          sudo chown runner:runner "./OtpErlang-${{ matrix.branch_suffix }}-java${{ matrix.java-version }}-$VERSION.jar"
+          JAR_FILE="OtpErlang-${{ matrix.branch_suffix }}-java${{ matrix.java-version }}-$VERSION.jar"
+          sudo cp "$JINTERFACE_PATH/OtpErlang.jar" "./$JAR_FILE"
+          sudo chown runner:runner "./$JAR_FILE"
+          
+          # Calculate SHA256
+          SHA256=$(sha256sum "./$JAR_FILE" | cut -d' ' -f1)
+          echo "sha256=$SHA256" >> $GITHUB_OUTPUT
+          echo "jar_file=$JAR_FILE" >> $GITHUB_OUTPUT
           
       - name: Create and upload release
         env:
@@ -93,16 +101,82 @@ jobs:
           echo "Build with:" >> release_notes.md
           echo "- OTP Branch: ${{ matrix.branch }}" >> release_notes.md
           echo "- Java Version: ${{ matrix.java-version }}" >> release_notes.md
+          echo "- SHA256: ${{ steps.locate_jar.outputs.sha256 }}" >> release_notes.md
           
           gh release create \
             "v${{ steps.locate_jar.outputs.version }}-${{ matrix.branch_suffix }}-java${{ matrix.java-version }}" \
-            "./OtpErlang-${{ matrix.branch_suffix }}-java${{ matrix.java-version }}-${{ steps.locate_jar.outputs.version }}.jar" \
+            "./${{ steps.locate_jar.outputs.jar_file }}" \
             --title "OtpErlang v${{ steps.locate_jar.outputs.version }} (${{ matrix.branch }} - Java ${{ matrix.java-version }})" \
-            --notes-file release_notes.md \
-            --prerelease=${{ matrix.branch != 'maint-27' }}
+            --notes-file release_notes.md
+
+      - name: Save build info
+        id: set-matrix-info
+        run: |
+          # Create JSON with build information
+          echo "{\"version\": \"${{ steps.locate_jar.outputs.version }}\", \"branch_suffix\": \"${{ matrix.branch_suffix }}\", \"java_version\": \"${{ matrix.java-version }}\", \"sha256\": \"${{ steps.locate_jar.outputs.sha256 }}\"}" >> build_info.json
+          echo "matrix-info=$(cat build_info.json)" >> $GITHUB_OUTPUT
           
       - name: Clean up artifacts
         if: always()
         run: |
-          rm -f ./OtpErlang-${{ matrix.branch_suffix }}-java${{ matrix.java-version }}-${{ steps.locate_jar.outputs.version }}.jar
+          rm -f "./${{ steps.locate_jar.outputs.jar_file }}"
           rm -f release_notes.md
+          rm -f build_info.json
+
+  update-readme:
+    needs: build-and-release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Update README
+        run: |
+          # Create a temporary file for the new README content
+          cat > README.new.md << 'EOL'
+          # Jinterface-build
+
+          Action that builds the Jinterface / OtpErlang jar file for OTP 27, OTP 26, OTP 25, with JDK 21, since the Jinterface version on Maven is more than outdated.
+
+          See the [RELEASES](https://github.com/alzo-archi/jinterface-build/releases) to get the build corresponding to your OTP version.
+          Use it in your Java project with :
+
+          ```sh
+          mvn install:install-file \
+              -Dfile=./OtpErlang-VERSION.jar \
+              -DgroupId=org.ericsson.otp \
+              -DartifactId=jinterface \
+              -Dversion=VERSION \
+              -Dpackaging=jar \
+              -DgeneratePom=true
+          ```
+
+          |OTP Version|Jinterface Version|URL|SHA256|
+          |---|---|---|---|
+          EOL
+
+          # Add each version's information
+          while IFS= read -r line; do
+            info=$(echo "$line" | jq -r '.')
+            version=$(echo "$info" | jq -r '.version')
+            branch_suffix=$(echo "$info" | jq -r '.branch_suffix')
+            java_version=$(echo "$info" | jq -r '.java_version')
+            sha256=$(echo "$info" | jq -r '.sha256')
+            otp_version="${branch_suffix#otp}"
+            
+            jar_name="OtpErlang-${branch_suffix}-java${java_version}-${version}.jar"
+            url="https://github.com/alzo-archi/jinterface-build/releases/download/v${version}-${branch_suffix}-java${java_version}/${jar_name}"
+            
+            echo "|${otp_version}|${version}|${url}|${sha256}|" >> README.new.md
+          done < <(echo '${{ needs.build-and-release.outputs.matrix-info }}' | jq -c '.')
+
+          # Replace the old README with the new one
+          mv README.new.md README.md
+
+      - name: Commit and push changes
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add README.md
+          git commit -m "Update README with latest build information [skip ci]"
+          git push
