@@ -112,16 +112,27 @@ jobs:
       - name: Save build info
         id: set-matrix-info
         run: |
-          # Create JSON with build information
-          echo "{\"version\": \"${{ steps.locate_jar.outputs.version }}\", \"branch_suffix\": \"${{ matrix.branch_suffix }}\", \"java_version\": \"${{ matrix.java-version }}\", \"sha256\": \"${{ steps.locate_jar.outputs.sha256 }}\"}" >> build_info.json
-          echo "matrix-info=$(cat build_info.json)" >> $GITHUB_OUTPUT
+          # Create or append to JSON array file
+          if [ ! -f build_info_array.json ]; then
+            echo "[]" > build_info_array.json
+          fi
           
-      - name: Clean up artifacts
-        if: always()
-        run: |
-          rm -f "./${{ steps.locate_jar.outputs.jar_file }}"
-          rm -f release_notes.md
-          rm -f build_info.json
+          # Add current build info to array
+          jq --arg v "${{ steps.locate_jar.outputs.version }}" \
+             --arg bs "${{ matrix.branch_suffix }}" \
+             --arg jv "${{ matrix.java-version }}" \
+             --arg sh "${{ steps.locate_jar.outputs.sha256 }}" \
+             '. += [{"version": $v, "branch_suffix": $bs, "java_version": $jv, "sha256": $sh}]' \
+             build_info_array.json > tmp.json && mv tmp.json build_info_array.json
+          
+          # Set output to entire array
+          echo "matrix-info=$(cat build_info_array.json)" >> $GITHUB_OUTPUT
+
+      - name: Upload build info
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-info
+          path: build_info_array.json
 
   update-readme:
     needs: build-and-release
@@ -129,6 +140,11 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Download build info
+        uses: actions/download-artifact@v4
+        with:
+          name: build-info
 
       - name: Update README
         run: |
@@ -155,20 +171,19 @@ jobs:
           |---|---|---|---|
           EOL
 
-          # Add each version's information
-          while IFS= read -r line; do
-            info=$(echo "$line" | jq -r '.')
+          # Sort the JSON array by branch_suffix in descending order and process each entry
+          jq -c 'sort_by(.branch_suffix) | reverse | .[]' build_info_array.json | while read -r info; do
             version=$(echo "$info" | jq -r '.version')
             branch_suffix=$(echo "$info" | jq -r '.branch_suffix')
             java_version=$(echo "$info" | jq -r '.java_version')
             sha256=$(echo "$info" | jq -r '.sha256')
-            otp_version="${branch_suffix#otp}"
+            otp_version="${branch_suffix#"otp"}"
             
             jar_name="OtpErlang-${branch_suffix}-java${java_version}-${version}.jar"
             url="https://github.com/alzo-archi/jinterface-build/releases/download/v${version}-${branch_suffix}-java${java_version}/${jar_name}"
             
             echo "|${otp_version}|${version}|${url}|${sha256}|" >> README.new.md
-          done < <(echo '${{ needs.build-and-release.outputs.matrix-info }}' | jq -c '.')
+          done
 
           # Replace the old README with the new one
           mv README.new.md README.md
